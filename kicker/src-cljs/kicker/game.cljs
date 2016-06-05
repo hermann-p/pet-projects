@@ -1,6 +1,5 @@
 (ns kicker.game
   (:require [cljs.core.async :as as :refer [chan <! >!]]
-            [kicker.assets :as assets :refer [get-asset]]
             [dommy.core :as dommy])
   (:require-macros [cljs.core.async.macros :refer [go]]))
 

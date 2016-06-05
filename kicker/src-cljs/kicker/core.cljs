@@ -2,8 +2,7 @@
   (:require [dommy.core :as dommy]
             [hipo.core :as hipo]
             [cljs.core.async :as as :refer [chan >! <!]]
-            [kicker.game :as game]
-            [kicker.assets :as assets :refer [get-asset]])
+            [kicker.game :as game])
   (:require-macros [cljs.core.async.macros :as m :refer [go go-loop alt!]]))
 
 (def mouse-channel (as/chan 10))
