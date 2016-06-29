@@ -1,7 +1,11 @@
 (ns kicker.game
   (:require [cljs.core.async :as as :refer [chan <! >!]]
-            [dommy.core :as dommy])
+            [dommy.core :as dommy]
+            [hipo.core :as hipo]
+            [kicker.assets :as assets])
   (:require-macros [cljs.core.async.macros :refer [go]]))
+
+(enable-console-print!)
 
 (def state-channel (as/chan))
 (def action-channel (as/chan 5))
@@ -51,19 +55,6 @@
                  (< x (inc x-tiles))
                  ;(< -1 y)
                  (< y (inc y-tiles))]))
-
-(defn time-tick
-  "Advance the game one frame"
-  [{:keys [s] :as game}]
-  (if (zero? (mod (:time game) (:spawn-every game)))
-    (go (>! action-channel [:add-ball])))
-  (-> (update game :time inc)
-      (assoc :balls
-             (filter (partial on-screen? game)
-                     (map          ; chain: gravity + detect collision + move
-                      (comp (partial collision game) update-pos apply-gravity)
-                      (:balls game))))
-      (assoc :last-frame kicker.core/timestamp)))
 
 ;;-------------------------------------------------------------------------------------------
 ;; Coordinate transformation functions
@@ -115,27 +106,94 @@
 ;;-------------------------------------------------------------------------------------------
 ;; Drawing function
 
-(defn draw
+(defmulti state-change (fn [v _] v))
+
+(defmethod state-change :loading-done [v game]
+  (dommy/toggle! (dommy/sel1 :#loadingScreen) false)
+  (assoc game :state :level))
+
+(defn- get-state [game]
+  (:state game))
+(defmulti draw get-state)
+(defmulti time-tick get-state)
+
+(defmethod draw :loading
+  [game]
+  (if-let [overlay (dommy/sel1 :#loadingScreen)]
+    (do
+      (dommy/show! overlay)
+      (dommy/set-attr! (dommy/sel1 :#progressbar) :value (assets/percent-done)))
+    (let [overlay (hipo/create [:div {:id "loadingScreen"} [:font {:size "5vw"} "Loading..."]])
+          progressbar (hipo/create [:meter {:value 0 :max 100 :id "progressbar"}])]
+      (dommy/set-style! progressbar :position "absolute" :bottom "0" :left "5%" :width "90%")
+      (dommy/set-style! overlay
+                        :background-color "#aaaaaa"
+                        :z "999"
+                        :position "absolute"
+                        :top "0" :left "0"
+                        :width "100%"
+                        :height "100%"
+                        :text-align "center")
+      (dommy/append! overlay progressbar)
+      (dommy/append! (dommy/sel1 :body) overlay)))
+  game)
+
+(defmethod time-tick :loading [game]
+  (println (assets/percent-done) "loaded")
+  (if (assets/ready?)
+    (go (>! state-channel :loading-done)))
+  game)
+
+;;-------------------------------------------------------------------------------------------
+;; Play
+
+(defmethod draw :level
   [{:keys [s x-tiles y-tiles foot balls] :as game}]
   (let [ctx (.getContext (dommy/sel1 :canvas) "2d")
         [foot-x foot-y] (to-screen (:x foot) (:y foot) game)
         ball-size (* (:ball-size game) s)
         foot-size (* (:foot-size game) s)]
-    (set! (.-fillStyle ctx) "#AAAAFF")
-    (.fillRect ctx 0 0 (.-innerWidth js/window) (.-innerHeight js/window))
-    
-    (set! (.-fillStyle ctx) "#000000")
-    (doto ctx
-      (.beginPath)
-      (.arc (int foot-x)
-            (int foot-y)
-            foot-size 0 (* 2 Math/PI))
-      (.fill))
-    
-    (set! (.-fillStyle ctx) "#FFFFFF")
-    (doseq [ball balls]
-      (let [[x y] (to-screen (:x ball) (:y ball) game)]
-        (doto ctx
-          (.beginPath)
-          (.arc (int x) (int y) ball-size 0 (* 2 Math/PI))
-          (.fill))))))
+;;    (set! (.-fillStyle ctx) "#AAAAFF")
+;;    (.fillRect ctx 0 0 (.-innerWidth js/window) (.-innerHeight js/window))
+    (let [background-image (assets/get-asset :img :test)
+          ball-image (assets/get-asset :img :ball)
+          foot-image (assets/get-asset :img :foot)]
+      (.drawImage ctx background-image
+                  0 0 (.-innerWidth js/window) (.-innerHeight js/window))
+
+      (.drawImage ctx foot-image
+                  (int (- foot-x foot-size)) (int (- foot-y foot-size))
+                  (* 2 foot-size) (* 2 foot-size))
+      
+      ;; (set! (.-fillStyle ctx) "#000000")
+      ;;    (doto ctx
+      ;;      (.beginPath)
+      ;;      (.arc (int foot-x)
+      ;;            (int foot-y)
+      ;;            foot-size 0 (* 2 Math/PI))
+      ;;      (.fill))
+      
+      ;; (set! (.-fillStyle ctx) "#FFFFFF")
+      (doseq [ball balls]
+        (let [[x y] (to-screen (:x ball) (:y ball) game)]
+          (.drawImage ctx ball-image
+                      (int (- x ball-size)) (int (- y ball-size))
+                      (* 2 ball-size) (* 2 ball-size))
+          ;;        (doto ctx
+          ;;          (.beginPath)
+          ;;          (.arc (int x) (int y) ball-size 0 (* 2 Math/PI))
+          ;;          (.fill))
+          )))))
+
+
+(defmethod time-tick :level
+;  "Advance the game one frame"
+  [{:keys [s] :as game}]
+  (if (zero? (mod (:time game) (:spawn-every game)))
+    (go (>! action-channel [:add-ball])))
+  (-> (update game :time inc)
+      (assoc :balls
+             (filter (partial on-screen? game)
+                     (map          ; chain: gravity + detect collision + move
+                      (comp (partial collision game) update-pos apply-gravity)
+                      (:balls game))))))
