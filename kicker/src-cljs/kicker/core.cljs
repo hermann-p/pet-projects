@@ -85,10 +85,15 @@
       :default
       (recur (game/action value game)))))
 
-"Start the first frame"
-(tick-the-clock)
 
 (assets/request :img :test "http://www.blendernation.com/wp-content/uploads/2013/01/Soccer_Arena_01.jpeg")
-(assets/request :img :ball "http://images.clipartpanda.com/soccer-ball-clipart-no-background-nTX8RoMTB.png")
-(assets/request :img :foot "http://www.clker.com/cliparts/4/m/m/a/z/6/track-hi.png")
+(assets/request :img :ball "http://worldartsme.com/images/transparent-soccer-ball-clipart-1.jpg")
+(assets/request :img :foot "http://www.clker.com/cliparts/6/q/d/y/V/O/running-shoe-md.png")
+; royalty free sounds from www.soundbible.com
+(assets/request :snd :hit-ball "snd/hit.wav")
+(assets/request :snd :cheer "snd/cheer.wav")
+(assets/request :snd :sad "snd/aww.wav")
 (assets/load)
+
+"Start the first frame"
+(tick-the-clock)

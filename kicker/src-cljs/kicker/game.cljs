@@ -42,9 +42,10 @@
     (let [min-dist (+ ball-size foot-size)
           cur-dist (dist foot ball)]
       (if (< cur-dist min-dist)
-        (let [dx (- (:x ball) (:x foot))
-              dy (- (:y ball) (:y foot))]
-          (assoc ball :vx (* 20 dx) :vy (* 20 dy)))
+        (do (assets/play-sound :hit-ball)
+            (let [dx (- (:x ball) (:x foot))
+                  dy (- (:y ball) (:y foot))]
+              (assoc ball :vx (* 20 dx) :vy (* 20 dy))))
         ball))
     ball))
 
@@ -55,6 +56,14 @@
                  (< x (inc x-tiles))
                  ;(< -1 y)
                  (< y (inc y-tiles))]))
+
+(defn score-ball
+  [game ball]
+  (if-not (on-screen? game ball)
+    (if (< (:y-tiles game) (:y ball))
+      (assets/play-sound :sad)
+      (assets/play-sound :cheer)))
+  ball)
 
 ;;-------------------------------------------------------------------------------------------
 ;; Coordinate transformation functions
@@ -139,7 +148,7 @@
   game)
 
 (defmethod time-tick :loading [game]
-  (println (assets/percent-done) "loaded")
+;  (println (assets/percent-done) "loaded")
   (if (assets/ready?)
     (go (>! state-channel :loading-done)))
   game)
@@ -165,25 +174,11 @@
                   (int (- foot-x foot-size)) (int (- foot-y foot-size))
                   (* 2 foot-size) (* 2 foot-size))
       
-      ;; (set! (.-fillStyle ctx) "#000000")
-      ;;    (doto ctx
-      ;;      (.beginPath)
-      ;;      (.arc (int foot-x)
-      ;;            (int foot-y)
-      ;;            foot-size 0 (* 2 Math/PI))
-      ;;      (.fill))
-      
-      ;; (set! (.-fillStyle ctx) "#FFFFFF")
       (doseq [ball balls]
         (let [[x y] (to-screen (:x ball) (:y ball) game)]
           (.drawImage ctx ball-image
                       (int (- x ball-size)) (int (- y ball-size))
-                      (* 2 ball-size) (* 2 ball-size))
-          ;;        (doto ctx
-          ;;          (.beginPath)
-          ;;          (.arc (int x) (int y) ball-size 0 (* 2 Math/PI))
-          ;;          (.fill))
-          )))))
+                      (* 2 ball-size) (* 2 ball-size)))))))
 
 
 (defmethod time-tick :level
@@ -195,5 +190,8 @@
       (assoc :balls
              (filter (partial on-screen? game)
                      (map          ; chain: gravity + detect collision + move
-                      (comp (partial collision game) update-pos apply-gravity)
+                      (comp (partial score-ball game)
+                            (partial collision game)
+                            update-pos
+                            apply-gravity)
                       (:balls game))))))

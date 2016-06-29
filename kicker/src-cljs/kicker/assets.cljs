@@ -22,7 +22,7 @@
         r (if-not (zero? total)
             (* 100 (/ loaded total))
             100)]
-    (println "Req:" total "loaded:" loaded "Percentage:" r)
+    ;(println "Req:" total "loaded:" loaded "Percentage:" r)
     r))
 
 (defn ready? []
@@ -43,18 +43,37 @@
 (defn request [type-key id url]
   (swap! url-list #(conj % {:type-key type-key :id id :url url})))
 
+
+(defn load-img [id url]
+  (let [img (hipo/create [:img {:src url}])]
+    (dommy/listen-once! img :load (partial load-success :img id))
+    (swap! assets #(assoc-in % [:img id] {:data img
+                                          :ready false}))))
+
+(defn load-sound [id url]
+  (swap! assets #(assoc-in % [:snd id] {:data nil
+                                        :ready false}))
+  (let [ctx (:audio-ctx @assets)
+        request (js/XMLHttpRequest.)]
+    (.open request "GET" url true)
+    (set! (.-responseType request) "arraybuffer")
+    (dommy/listen-once! request :load
+                        (fn []
+                          (.decodeAudioData ctx (.-response request)
+                                            (fn [buffer] (swap! assets #(assoc-in % [:snd id] {:data buffer
+                                                                                               :ready true})))
+                                            (fn []
+                                              (js/alert "Error loading" url)))))
+    (.send request)))
+
 (defn load-asset [{:keys [type-key id url]}]
-  (if-not (contains? @assets id)
-    (let [asset (hipo/create [(type-tag type-key) {:src url}])]
-      (dommy/listen-once! asset :load (partial load-success type-key id))
-      (dommy/listen-once! asset :error
-                          (fn [& args]
-                            (swap! assets #(assoc-in % [type-key id :data] nil))
-                            (println "ERROR:" id url "could not be loaded")))
-      (swap! assets #(assoc-in % [type-key id] {:data asset
-                                                :ready false})))))
+  (if-not (get-in @assets [type-key id])
+    (case type-key
+      :img (load-img id url)
+      :snd (load-sound id url))))
 
 (defn load []
+  (swap! assets #(assoc % :audio-ctx (or (js/AudioContext.) (js/webkitAudioContext.))))
   (doseq [asset @url-list]
     (load-asset asset)))
 
@@ -69,3 +88,13 @@
   (if-let [asset (get-in @assets [type-key id :data])]
     asset
     (println "No" type-key "named" id "loaded!")))
+
+(defn play-sound [id]
+  (if-let [sound (get-in @assets [:snd id :data])]
+    (let [ctx (:audio-ctx @assets)
+          src (.createBufferSource ctx)]
+      (set! (.-buffer src) sound)
+      (prn src)
+      (doto src
+        (.connect (.-destination ctx))
+        (.start 0)))))
